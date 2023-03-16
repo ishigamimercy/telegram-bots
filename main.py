@@ -14,14 +14,21 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 # Pyrogram client
 app = Client(name="app", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
-# define a handler function for messages that contain a YouTube link
-@ app.on_message(filters.regex(r"(http(s)?://)?((w){3}.)?youtu(be|.be)?(\.com)?/.+"))
-async def download_media(client: Client, message: Message):
-    # extract the YouTube video URL from the message text
-    url = message.text
+# define a handler function for messages that contain the "/dlyt" command
+@ app.on_message(filters.command("dlyt"))
+async def ask_for_format(client: Client, message: Message):
+    # check if the user provided a YouTube link
+    if len(message.command) < 2:
+        message.reply_text("Please provide a valid YouTube link after the command.")
+        return
+    url = message.command[1]
     
     # create a PyTube YouTube object for the video
-    video = pytube.YouTube(url)
+    try:
+        video = pytube.YouTube(url)
+    except:
+        message.reply_text("Error: Invalid YouTube link.")
+        return
     
     # ask the user whether they want to download a video or an audio file
     keyboard = [
@@ -39,50 +46,33 @@ async def download_media(client: Client, message: Message):
 # define a handler function for callback queries from the download format keyboard
 @ app.on_callback_query()
 async def handle_callback_query(client: Client, query: CallbackQuery):
-    # get the YouTube URL from the storage dictionary
+    # get the current YouTube URL from storage
     url = client.storage.get("current_url")
     
-    # extract the requested format from the callback data
-    callback_data = query.data
-    format_type, format_extension = callback_data.split("_")
+    # get the desired download format from the callback data
+    format = query.data.split("_")[0]
     
     # create a PyTube YouTube object for the video
     video = pytube.YouTube(url)
     
-    if format_type == "video":
-        # get the highest resolution video stream
+    # download the video or audio file in the desired format
+    if format == "video":
+        # download the highest resolution MP4 video
         stream = video.streams.get_highest_resolution()
-        
-        # download the video to a file in the current directory
-        stream.download(filename="video.mp4")
-        
-        # send the downloaded video file as a reply to the original message
-        client.send_video(
-            chat_id=query.message.chat.id,
-            video="video.mp4",
-            reply_to_message_id=query.message.reply_to_message.message_id
-        )
-        
-        # delete the downloaded video file from the local filesystem
-        os.remove("video.mp4")
-    
-    elif format_type == "audio":
-        # get the highest bitrate audio stream
-        stream = video.streams.get_audio_only().order_by("bitrate").desc().first()
-        
-        # download the audio to a file in the current directory
-        stream.download(filename="audio." + format_extension)
-        
-        # send the downloaded audio file as a reply to the original message
-        client.send_audio(
-            chat_id=query.message.chat.id,
-            audio="audio." + format_extension,
-            reply_to_message_id=query.message.reply_to_message.message_id
-        )
-        
-        # delete the downloaded audio file from the local filesystem
-        os.remove("audio." + format_extension)
+        stream.download()
+        message.reply_text("Video downloaded successfully.")
+    elif format == "audio":
+        # download the audio file as an MP3
+        stream = video.streams.filter(only_audio=True).first()
+        stream.download()
+        message.reply_text("Audio downloaded successfully.")
+    else:
+        message.reply_text("Error: Invalid download format.")
 
-# start the Pyrogram client
+# define a handler function for messages that contain the "/start" command
+@ app.on_message(filters.command("start"))
+async def start_command(client: Client, message: Message):
+    message.reply_text("Hi!!! I'm alive.")
+
+# run the Pyrogram client
 app.run()
-
